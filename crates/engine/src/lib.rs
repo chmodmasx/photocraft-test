@@ -7,6 +7,8 @@
 #![forbid(unsafe_code)]
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+#[cfg(all(feature = "local-ai-migan", not(target_arch = "wasm32")))]
+pub mod ai_migan_cmds;
 pub mod actions_cmds;
 pub mod adjust_cmds;
 pub mod adjust_params;
