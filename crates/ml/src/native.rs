@@ -6,7 +6,7 @@ use std::sync::{Mutex, PoisonError};
 use ort::session::{Session as OnnxSession, builder::GraphOptimizationLevel};
 use ort::value::Tensor;
 use sha2::{Digest, Sha256};
-use crate::{InpaintRequest, MlError, Result, compose};
+use crate::{InpaintRequest, MlError, Result};
 
 const MODEL_BYTES: u64 = 28_079_181;
 const MODEL_SHA256: &str = "6f1f3530a1a2324b19752018ce756088b07973cda8d7d890034ace5c8a48c40b";
@@ -61,6 +61,15 @@ impl NativeMigan {
         if shape.iter().copied().collect::<Vec<_>>() != expected {
             return Err(MlError::Inference("unexpected NCHW tensor shape".into()));
         }
-        compose(req, data)
+        // The engine applies the selection mask as a layer mask; blending here
+        // would apply feathered coverage twice and create dark/transparent seams.
+        let count = req.selection.len();
+        let mut rgb = vec![0u8; count * 3];
+        for (i, pixel) in rgb.chunks_exact_mut(3).enumerate() {
+            for channel in 0..3 {
+                pixel[channel] = data[channel * count + i];
+            }
+        }
+        Ok(rgb)
     }
 }

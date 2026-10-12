@@ -199,4 +199,32 @@ mod tests {
         assert!(!session.is_enabled(ID));
         assert!(session.execute(ID, json!({})).is_err());
     }
+    #[test]
+    #[ignore = "requires PHOTOCRAFT_MIGAN_MODEL pointing to the pinned ONNX export"]
+    fn real_cpu_inference_creates_layer_and_undoes() {
+        let mut session = Session::new();
+        session.execute("file.new", json!({"width":384,"height":384})).unwrap();
+        session.execute("select.rect", json!({
+            "x":112,"y":112,"width":128,"height":128
+        })).unwrap();
+        let previous = session.active().unwrap().doc.clone();
+        let before = session.active().unwrap().history.past_len();
+        let out = session.execute(ID, json!({"threads":4})).unwrap();
+        let id = photocraft_doc::LayerId(out["layer"].as_u64().unwrap());
+        let state = session.active().unwrap();
+        assert!(state.doc.layer(id).is_some());
+        assert!(state.doc.layer(id).unwrap().mask.is_some());
+        assert_eq!(state.history.past_len(), before + 1);
+        let corner = Rect::new(0, 0, 16, 16);
+        assert_eq!(
+            photocraft_compose::render(&previous, corner).px,
+            photocraft_compose::render(&state.doc, corner).px,
+            "outside the selection the visible image must be exactly preserved"
+        );
+        session.execute("edit.undo", json!({})).unwrap();
+        assert!(session.active().unwrap().doc.layer(id).is_none());
+        session.execute("edit.redo", json!({})).unwrap();
+        assert!(session.active().unwrap().doc.layer(id).is_some());
+    }
+
 }

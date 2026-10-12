@@ -34,5 +34,11 @@ jobs:
         run: cargo check -p photocraft-engine --features local-ai-migan
       - name: Test native engine command
         run: cargo test -p photocraft-engine --features local-ai-migan ai_migan_cmds::tests
+      - name: Download the pinned model for real native inference
+        run: python3 experiments/migan/download_model.py --download
+      - name: End-to-end PhotoCraft command (CPU model, layer, mask, undo and redo)
+        run: |
+          export PHOTOCRAFT_MIGAN_MODEL="$PWD/experiments/migan/models/migan_pipeline_v2.onnx"
+          cargo test -p photocraft-engine --features local-ai-migan real_cpu_inference_creates_layer_and_undoes -- --ignored --nocapture
       - name: Check crate dependency layers
         run: cargo xtask layers

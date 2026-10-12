@@ -43,3 +43,20 @@ tool before integrating a native model.
 
 Source: https://github.com/Picsart-AI-Research/MI-GAN
 Pinned export: https://huggingface.co/andraniksargsyan/migan/tree/1538c135034b8cfe7a8472f34d09c8a5a45b17a7
+
+
+## Experimental native Rust integration
+
+The same fork also has an opt-in Rust crate, photocraft-ml, with ONNX Runtime
+and a hidden PhotoCraft engine command, edit.aiRemoveSelection.
+Use --features local-ai-migan with the photocraft desktop or CLI build.
+Set PHOTOCRAFT_MIGAN_MODEL to the downloaded, SHA-256 verified ONNX file.
+Then open an opaque RGB document no larger than 2048 x 2048 and create a
+selection. The command inserts a new masked raster layer, preserving the
+source layers and supporting undo/redo. It is not yet a menu action.
+
+The native integration is verified by the ai-migan-native GitHub workflow.
+A separate ignored Rust test exercises real CPU inference, layer creation,
+selection masking, exact visible pixels outside the mask, undo and redo.
+The ONNX call itself is not preemptible: cancellation checks run before/after.
+Real-world image quality and peak memory usage are still unvalidated.
