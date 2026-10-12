@@ -1,0 +1,19 @@
+[package]
+name = "photocraft-ml"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+default = []
+onnx = ["dep:ort", "dep:sha2"]
+
+[dependencies]
+thiserror = { workspace = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+ort = { version = "=2.0.0-rc.13", default-features = false, features = ["std", "api-27", "download-binaries", "tls-rustls"], optional = true }
+sha2 = { version = "0.10", optional = true }

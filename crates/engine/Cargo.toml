@@ -10,6 +10,8 @@ workspace = true
 [features]
 # Real-file corpus tests (opt-in; `cargo xtask test-corpus`). Fail when the corpus is missing.
 corpus = []
+# Experimental local CPU model. Off by default.
+local-ai-migan = ["dep:photocraft-ml", "photocraft-ml/onnx"]
 
 [dependencies]
 photocraft-geom = { workspace = true }
@@ -31,6 +33,7 @@ photocraft-io = { workspace = true }
 photocraft-psd = { workspace = true }
 photocraft-format = { workspace = true }
 photocraft-plugins = { workspace = true }
+photocraft-ml = { workspace = true, optional = true }
 blake3 = { version = "1.8", default-features = false, features = ["pure"] }
 photocraft-codecs = { workspace = true }
 flate2 = { workspace = true }
