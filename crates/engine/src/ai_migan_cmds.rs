@@ -1,15 +1,15 @@
 //! Experimental command: local selection -> MI-GAN CPU -> new masked raster layer.
 //! Hidden from the menus until native inference, quality, and resource limits are validated.
-use std::path::PathBuf;
+use crate::commands::CommandSpec;
+use crate::{EngineError, Result, Session};
 use photocraft_cms::{Builtin, Intent, Transform};
 use photocraft_color::{ColorMode, PixelFormat, SampleType};
 use photocraft_doc::{Document, Layer, LayerMask};
 use photocraft_geom::Rect;
 use photocraft_ml::{InpaintRequest, NativeMigan};
 use photocraft_raster::Surface;
-use serde_json::{json, Value};
-use crate::commands::CommandSpec;
-use crate::{EngineError, Result, Session};
+use serde_json::{Value, json};
+use std::path::PathBuf;
 
 pub const ID: &str = "edit.aiRemoveSelection";
 const LABEL: &str = "AI Remove Selection (MI-GAN)";
@@ -30,12 +30,13 @@ fn enabled(s: &Session) -> std::result::Result<(), String> {
         return Err("selection is empty".into());
     }
     let bounds = state.doc.bounds();
-    let n = (bounds.width() as usize).checked_mul(bounds.height() as usize)
-        .ok_or("image dimensions overflow")?;
-    if bounds.width() == 0 || bounds.height() == 0
+    let n = (bounds.width() as usize).checked_mul(bounds.height() as usize).ok_or("image dimensions overflow")?;
+    if bounds.width() == 0
+        || bounds.height() == 0
         || bounds.width() > photocraft_ml::MAX_SIDE
         || bounds.height() > photocraft_ml::MAX_SIDE
-        || n > photocraft_ml::MAX_PIXELS {
+        || n > photocraft_ml::MAX_PIXELS
+    {
         return Err("experimental limit is 2048 pixels per side, 4MP total".into());
     }
     Ok(())
@@ -57,12 +58,7 @@ fn prepare(doc: &Document, sel: &Surface, ctx: &crate::jobs::JobCtx) -> Result<I
         Ok(())
     })?;
     ctx.check()?;
-    let transform = Transform::new(
-        &crate::color_cmds::composite_profile(doc),
-        Builtin::Srgb.profile(),
-        Intent::RelativeColorimetric,
-        true,
-    ).map_err(failure)?;
+    let transform = Transform::new(&crate::color_cmds::composite_profile(doc), Builtin::Srgb.profile(), Intent::RelativeColorimetric, true).map_err(failure)?;
     let srgb = crate::color_cmds::convert_surface(&surface, ColorMode::Rgb, fmt, &transform);
     let rgba = srgb.to_interleaved(area);
     let count = area.width() as usize * area.height() as usize;
@@ -84,12 +80,8 @@ fn prepare(doc: &Document, sel: &Surface, ctx: &crate::jobs::JobCtx) -> Result<I
     if samples.len() != count * channel_count {
         return Err(failure("selection dimensions do not match the document"));
     }
-    let selection = samples.chunks_exact(channel_count)
-        .map(|pixel| (pixel[0].clamp(0.0, 1.0) * 255.0).round() as u8)
-        .collect();
-    let request = InpaintRequest {
-        width: area.width(), height: area.height(), rgb, selection,
-    };
+    let selection = samples.chunks_exact(channel_count).map(|pixel| (pixel[0].clamp(0.0, 1.0) * 255.0).round() as u8).collect();
+    let request = InpaintRequest { width: area.width(), height: area.height(), rgb, selection };
     request.validate().map_err(failure)?;
     Ok(request)
 }
@@ -107,12 +99,7 @@ fn to_document(doc: &Document, rgb: &[u8], area: Rect) -> Result<Surface> {
     let mut source = Surface::new(src_format);
     source.write_interleaved(area, &rgba);
     let target = PixelFormat::new(doc.mode, doc.depth, true);
-    let transform = Transform::new(
-        Builtin::Srgb.profile(),
-        &crate::color_cmds::document_profile(doc),
-        Intent::RelativeColorimetric,
-        true,
-    ).map_err(failure)?;
+    let transform = Transform::new(Builtin::Srgb.profile(), &crate::color_cmds::document_profile(doc), Intent::RelativeColorimetric, true).map_err(failure)?;
     let result = crate::color_cmds::convert_surface(&source, ColorMode::Rgb, target, &transform);
     Ok(if result.format() == target { result } else { result.convert(target) })
 }
@@ -125,21 +112,20 @@ fn run(s: &mut Session, p: &Value) -> Result<Value> {
     }
     let threads = match obj.get("threads") {
         None => std::thread::available_parallelism().map_or(4, |n| n.get().min(8)),
-        Some(Value::Number(n)) => n.as_u64()
-            .and_then(|v| usize::try_from(v).ok())
-            .filter(|v| (1..=64).contains(v))
-            .ok_or_else(|| invalid("threads must be 1..=64"))?,
+        Some(Value::Number(n)) => {
+            n.as_u64().and_then(|v| usize::try_from(v).ok()).filter(|v| (1..=64).contains(v)).ok_or_else(|| invalid("threads must be 1..=64"))?
+        }
         _ => return Err(invalid("threads must be 1..=64")),
     };
-    let model_path = std::env::var_os("PHOTOCRAFT_MIGAN_MODEL")
-        .map(PathBuf::from)
-        .ok_or_else(|| invalid("set PHOTOCRAFT_MIGAN_MODEL to the ONNX file"))?;
+    let model_path = std::env::var_os("PHOTOCRAFT_MIGAN_MODEL").map(PathBuf::from).ok_or_else(|| invalid("set PHOTOCRAFT_MIGAN_MODEL to the ONNX file"))?;
     let state = s.active().ok_or(EngineError::NoDocument)?;
     let snapshot = state.doc.clone();
     let mask = snapshot.selection.clone().ok_or_else(|| invalid("selection missing"))?;
     let area = snapshot.bounds();
     crate::jobs::run(
-        s, LABEL, true,
+        s,
+        LABEL,
+        true,
         move |ctx| {
             ctx.progress(0.05, "Preparing image and selection");
             let input = prepare(&snapshot, &mask, ctx)?;
@@ -160,10 +146,7 @@ fn run(s: &mut Session, p: &Value) -> Result<Value> {
                 let converted = to_document(doc, &pixels, area)?;
                 let mut layer = Layer::raster(LABEL, converted.format());
                 *layer.surface_mut().ok_or_else(|| failure("could not create layer"))? = converted;
-                layer.mask = Some(LayerMask {
-                    surface: selection,
-                    ..LayerMask::reveal_all()
-                });
+                layer.mask = Some(LayerMask { surface: selection, ..LayerMask::reveal_all() });
                 let id = doc.insert_above(*active, layer);
                 *active = Some(id);
                 Ok(id)
@@ -204,9 +187,14 @@ mod tests {
     fn real_cpu_inference_creates_layer_and_undoes() {
         let mut session = Session::new();
         session.execute("file.new", json!({"width":384,"height":384})).unwrap();
-        session.execute("select.rect", json!({
-            "x":112,"y":112,"width":128,"height":128
-        })).unwrap();
+        session
+            .execute(
+                "select.rect",
+                json!({
+                    "x":112,"y":112,"width":128,"height":128
+                }),
+            )
+            .unwrap();
         let previous = session.active().unwrap().doc.clone();
         let before = session.active().unwrap().history.past_len();
         let out = session.execute(ID, json!({"threads":4})).unwrap();
@@ -226,5 +214,4 @@ mod tests {
         session.execute("edit.redo", json!({})).unwrap();
         assert!(session.active().unwrap().doc.layer(id).is_some());
     }
-
 }

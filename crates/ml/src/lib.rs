@@ -32,8 +32,7 @@ pub struct InpaintRequest {
 }
 impl InpaintRequest {
     pub fn validate(&self) -> Result<()> {
-        let n = (self.width as usize).checked_mul(self.height as usize)
-            .ok_or_else(|| MlError::Invalid("image size overflow".into()))?;
+        let n = (self.width as usize).checked_mul(self.height as usize).ok_or_else(|| MlError::Invalid("image size overflow".into()))?;
         if self.width == 0 || self.height == 0 || self.width > MAX_SIDE || self.height > MAX_SIDE || n > MAX_PIXELS {
             return Err(MlError::Invalid("maximum 2048x2048 and 4MP".into()));
         }
@@ -50,7 +49,9 @@ impl InpaintRequest {
         let n = self.selection.len();
         let mut out = vec![0; n * 3];
         for (i, rgb) in self.rgb.chunks_exact(3).enumerate() {
-            for ch in 0..3 { out[ch * n + i] = rgb[ch]; }
+            for ch in 0..3 {
+                out[ch * n + i] = rgb[ch];
+            }
         }
         Ok(out)
     }
@@ -63,10 +64,14 @@ impl InpaintRequest {
 pub fn compose(request: &InpaintRequest, nchw: &[u8]) -> Result<Vec<u8>> {
     request.validate()?;
     let n = request.selection.len();
-    if nchw.len() != n * 3 { return Err(MlError::Invalid("unexpected output length".into())); }
+    if nchw.len() != n * 3 {
+        return Err(MlError::Invalid("unexpected output length".into()));
+    }
     let mut output = request.rgb.clone();
     for (i, &alpha) in request.selection.iter().enumerate() {
-        if alpha == 0 { continue; }
+        if alpha == 0 {
+            continue;
+        }
         let a = f32::from(alpha) / 255.0;
         for channel in 0..3 {
             let j = i * 3 + channel;
@@ -81,17 +86,17 @@ pub fn compose(request: &InpaintRequest, nchw: &[u8]) -> Result<Vec<u8>> {
 mod tests {
     use super::*;
     fn sample() -> InpaintRequest {
-        InpaintRequest { width: 2, height: 1, rgb: vec![10,20,30,40,50,60], selection: vec![0,255] }
+        InpaintRequest { width: 2, height: 1, rgb: vec![10, 20, 30, 40, 50, 60], selection: vec![0, 255] }
     }
     #[test]
     fn tensor_layout_and_mask_polarity() {
-        assert_eq!(sample().image_nchw().unwrap(), [10,40,20,50,30,60]);
-        assert_eq!(sample().known_mask().unwrap(), [255,0]);
+        assert_eq!(sample().image_nchw().unwrap(), [10, 40, 20, 50, 30, 60]);
+        assert_eq!(sample().known_mask().unwrap(), [255, 0]);
     }
     #[test]
     fn outside_selection_unchanged_and_soft_edges() {
-        let raw = [200,210,200,210,200,210];
-        assert_eq!(&compose(&sample(), &raw).unwrap()[..3], &[10,20,30]);
+        let raw = [200, 210, 200, 210, 200, 210];
+        assert_eq!(&compose(&sample(), &raw).unwrap()[..3], &[10, 20, 30]);
         let mut req = sample();
         req.selection[1] = 128;
         let pixels = compose(&req, &raw).unwrap();
@@ -106,7 +111,7 @@ mod tests {
         r.rgb.truncate(2);
         assert!(r.validate().is_err());
         let mut r = sample();
-        r.selection = vec![255,255];
+        r.selection = vec![255, 255];
         assert!(r.validate().is_err());
         assert!(compose(&sample(), &[]).is_err());
     }
