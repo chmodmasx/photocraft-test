@@ -12,7 +12,7 @@ on:
       - ".github/workflows/ai-migan-native.yml"
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 jobs:
   native:
     runs-on: ubuntu-latest
@@ -42,3 +42,14 @@ jobs:
           cargo test -p photocraft-engine --features local-ai-migan real_cpu_inference_creates_layer_and_undoes -- --ignored --nocapture
       - name: Check crate dependency layers
         run: cargo xtask layers
+      - name: Apply rustfmt and persist resolved Cargo.lock
+        run: |
+          cargo fmt --all
+          git add Cargo.lock crates/ml/src/lib.rs crates/ml/src/native.rs crates/engine/src/ai_migan_cmds.rs
+          if ! git diff --cached --quiet; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git commit -m 'chore(ai): format Rust files and lock native dependencies'
+            git push origin HEAD:refs/heads/experiment/ai-migan-cpu
+          fi
+
