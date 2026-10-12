@@ -1,0 +1,46 @@
+name: MI-GAN CPU evaluation (experimental)
+on:
+  push:
+    branches: ["experiment/ai-migan-cpu"]
+    paths:
+      - "experiments/migan/**"
+      - ".github/workflows/ai-migan-probe.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  cpu:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: experiments/migan/requirements.txt
+      - name: Isolated Python environment
+        run: |
+          python -m venv .venv-migan
+          .venv-migan/bin/python -m pip install -r experiments/migan/requirements.txt
+      - name: Offline tests
+        run: .venv-migan/bin/python -m unittest discover -s experiments/migan -p 'test_*.py' -v
+      - name: Fetch checksum-verified MI-GAN model (28.1 MB)
+        run: .venv-migan/bin/python experiments/migan/download_model.py --download
+      - name: Execute real ONNX model in CPU
+        run: |
+          .venv-migan/bin/python experiments/migan/make_fixture.py --directory /tmp/migan-eval
+          .venv-migan/bin/python experiments/migan/probe.py \
+            --model experiments/migan/models/migan_pipeline_v2.onnx \
+            --image /tmp/migan-eval/source.png \
+            --mask /tmp/migan-eval/selection.png \
+            --output /tmp/migan-eval/result.png \
+            --metrics /tmp/migan-eval/metrics.json
+          .venv-migan/bin/python -c 'import json; d=json.load(open("/tmp/migan-eval/metrics.json")); assert d["outside_mask_changed_pixels"]==0, d; assert d["inside_mask_changed_pixels"]>0, d'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: migan-cpu-fixture-results
+          path: /tmp/migan-eval/
+          if-no-files-found: ignore
+          retention-days: 7
