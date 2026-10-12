@@ -158,7 +158,7 @@ fn run(s: &mut Session, p: &Value) -> Result<Value> {
         move |session, (pixels, selection)| {
             let id = session.edit(LABEL, |doc, active| {
                 let converted = to_document(doc, &pixels, area)?;
-                let mut layer = Layer::raster(LABEL.into(), converted.format());
+                let mut layer = Layer::raster(LABEL, converted.format());
                 *layer.surface_mut().ok_or_else(|| failure("could not create layer"))? = converted;
                 layer.mask = Some(LayerMask {
                     surface: selection,
